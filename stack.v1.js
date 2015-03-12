@@ -1,20 +1,22 @@
-function stack() {
+function stack(parentSelector) {
   var stack = {},
-      size = [1280, 720],
-      fontSize = 32,
+      size = [1134, 828],
+      // size = [1280, 720],
+      fontSize = 30,
       sectionHeight,
       windowHeight,
-      dispatch = d3.dispatch("scroll", "activate", "deactivate"),
+      dispatch = d3.dispatch("scroll", "activate", "deactivate", "reflow"),
       touchy = "ontouchstart" in document,
       resize = touchy ? resizeTouchy : resizeNoTouchy,
       i = NaN,
       y = 0,
       yt,
-      scrollRatio = 1 / 6;
+      scrollRatio = 1 / 6,
+      flowDirection = null;
 
   var section = d3.selectAll("section")
       .style("box-sizing", "border-box")
-      .style("line-height", "1.35em")
+      // .style("line-height", "1.35em")
       .each(initialize);
 
   var n = section.size();
@@ -22,7 +24,6 @@ function stack() {
   var body = d3.select("body")
       .style("margin", 0)
       .style("padding", 0)
-      .style("background", "#333");
 
   if (touchy) {
     section
@@ -30,11 +31,12 @@ function stack() {
 
     d3.select(window)
         .on("resize.stack", resize)
-        .each(resize);
+        .each(resize)
+    setTimeout(function() {
+      d3.select(window).each(resize);
+    },0)
   } else {
-    var background = d3.select("body").insert("div", "section")
-        .style("background", "#000")
-        .style("box-shadow", "0 8px 16px rgba(0,0,0,.3)")
+    var background = d3.select(parentSelector).insert("div", "section")
         .style("padding", "1px 0")
         .style("margin-top", "-1px")
         .style("z-index", 0);
@@ -69,7 +71,10 @@ function stack() {
         .on("resize.stack", resize)
         .on("scroll.stack", reposition)
         .on("keydown.stack", keydown)
-        .each(resize);
+        .each(resize)
+    setTimeout(function() {
+      d3.select(window).each(resize);
+    },0)
 
     d3.timer(function() {
       reposition();
@@ -81,7 +86,9 @@ function stack() {
     var target = section[0][i], sourceEvent = event.sourceEvent = d3.event;
     try {
       d3.event = event;
-      dispatch[event.type].call(target, target.__data__, i);
+      if(typeof target !== 'undefined') {
+        dispatch[event.type].call(target, target.__data__, i);
+      } 
     } finally {
       d3.event = sourceEvent;
     }
@@ -118,25 +125,38 @@ function stack() {
         .style("margin-bottom", marginBottom + "px");
 
     body
-        .style("font-size", innerWidth / size[0] * fontSize + "px");
+        .style("font-size", innerWidth / size[0] * fontSize + "pt");
   }
 
   function resizeNoTouchy() {
     if (sectionHeight) var y0 = y;
-
     sectionHeight = size[1] / size[0] * innerWidth;
     windowHeight = innerHeight;
+    var w = innerWidth;
+    var newFlowDirection = null
+    if(sectionHeight > windowHeight) {
+      sectionHeight = windowHeight
+      w = size[0] / size[1] * sectionHeight;
+      newFlowDirection = 'wide'
+    } else {
+      newFlowDirection = 'tall'
+    }
+    if(flowDirection === null || newFlowDirection !== flowDirection) {
+      flowDirection = newFlowDirection;
+      dispatch.reflow(flowDirection)
 
+    }
     sectionAndBackground
         .style("top", (windowHeight - sectionHeight) / 2 + "px")
-        .style("height", sectionHeight + "px");
-
+        .style('left', (innerWidth - w) / 2 + 'px')
+        .style("height", sectionHeight + "px")
+        .style('width', w + 'px')
     indicator
         .style("top", function(i) { return (i + (1 - scrollRatio) / 2) * windowHeight + "px"; })
         .style("height", windowHeight * scrollRatio + "px");
 
     body
-        .style("font-size", innerWidth / size[0] * fontSize + "px")
+        .style("font-size", w / size[0] * fontSize + "pt")
         .style("height", windowHeight * n + "px");
 
     // Preserve the current scroll position on resize.
@@ -146,19 +166,18 @@ function stack() {
   function reposition() {
     var y1 = pageYOffset / windowHeight,
         i1 = Math.max(0, Math.min(n - 1, Math.floor(y1 + (1 + scrollRatio) / 2)));
-
     if (i !== i1) {
       if (i1 === i + 1) { // advance one
         sectionPrevious.interrupt().style("display", "none").style("opacity", 0).style("z-index", 0).each(deactivate);
         sectionPrevious = sectionCurrent.interrupt().style("opacity", 1).style("z-index", 1);
-        sectionPrevious.transition().each("end", deactivate);
+        sectionPrevious.transition().style('opacity',0).each("end", deactivate);
         sectionCurrent = sectionNext.interrupt().style("opacity", 0).style("z-index", 2).each(activate);
         sectionCurrent.transition().style("opacity", 1);
         sectionNext = d3.select(section[0][i1 + 1]).interrupt().style("display", "block").style("opacity", 0).style("z-index", 0);
       } else if (i1 === i - 1) { // rewind one
         sectionNext.interrupt().style("display", "none").style("opacity", 0).style("z-index", 0).each(deactivate);
         sectionNext = sectionCurrent.interrupt().style("opacity", 1).style("z-index", 1);
-        sectionNext.transition().each("end", deactivate);
+        sectionNext.transition().style('opacity',0).each("end", deactivate);
         sectionCurrent = sectionPrevious.interrupt().style("opacity", 0).style("z-index", 2).each(activate);
         sectionCurrent.transition().style("opacity", 1);
         sectionPrevious = d3.select(section[0][i1 - 1]).interrupt().style("display", "block").style("opacity", 0).style("z-index", 0);
@@ -227,6 +246,5 @@ function stack() {
   };
 
   d3.rebind(stack, dispatch, "on");
-
   return stack;
 }
